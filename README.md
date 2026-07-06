@@ -1,4 +1,4 @@
-# ✈️ TripMate AI
+# ✈️ Navigo
 
 **A Multi-Agent AI Travel Planner powered by LangGraph, FastAPI, and Groq**
 
