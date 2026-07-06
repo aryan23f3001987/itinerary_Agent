@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import traceback
 import uvicorn
 
@@ -11,6 +12,10 @@ from pydantic import BaseModel
 from backend import run_travel_agent
 
 BASE_DIR = Path(__file__).resolve().parent
+PHOTO_DIR = BASE_DIR / "photo_database"
+PHOTO_DIR.mkdir(exist_ok=True)
+
+ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 app = FastAPI(
     title="TripMate AI",
@@ -24,6 +29,21 @@ app.mount(
     StaticFiles(directory=str(BASE_DIR / "static")),
     name="static"
 )
+
+app.mount(
+    "/photos",
+    StaticFiles(directory=str(PHOTO_DIR)),
+    name="photos"
+)
+
+
+def _natural_sort_key(filename: str):
+    """
+    Sorts filenames the way a human expects: 1, 2, ..., 9, 10, 11
+    instead of the plain string order 1, 10, 11, 2, 3...
+    """
+    parts = re.split(r"(\d+)", filename)
+    return [int(part) if part.isdigit() else part.lower() for part in parts]
 
 
 templates = Jinja2Templates(
@@ -90,6 +110,31 @@ async def travel_planner(request_data: TravelRequest):
             }
         )
 
+
+
+@app.get("/api/photos")
+async def get_photos():
+    """
+    Scans the photo_database folder every time it's called, so dropping
+    in new images (7.jpg, 8.jpg, ...) shows up on next page load with
+    zero code changes.
+    """
+    try:
+        files = [
+            f.name for f in PHOTO_DIR.iterdir()
+            if f.is_file() and f.suffix.lower() in ALLOWED_PHOTO_EXTENSIONS
+        ]
+        files.sort(key=_natural_sort_key)
+
+        photos = [f"/photos/{name}" for name in files]
+
+        return JSONResponse(content={"success": True, "photos": photos})
+
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "photos": [], "error": str(e)}
+        )
 
 
 @app.get("/health")
