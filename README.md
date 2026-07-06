@@ -219,10 +219,4 @@ Simple health check — returns `{"status": "ok"}`.
 
 ---
 
-## 📄 License
-
-This project is open source. Add your preferred license (e.g. MIT) here.
-
----
-
 Built with FastAPI, LangGraph, Groq, PostgreSQL, Tavily, and AviationStack.
