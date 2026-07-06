@@ -1,6 +1,155 @@
 let currentThreadId = localStorage.getItem("travel_thread_id") || null;
 let latestAnswerMarkdown = "";
 
+// =========================
+// Photo Gallery Carousel (circular / infinite loop)
+// =========================
+
+let galleryPhotos = [];
+let galleryIndex = 0;
+let galleryTimer = null;
+const GALLERY_INTERVAL_MS = 7500;
+
+async function initGallery() {
+    const track = document.getElementById("galleryTrack");
+    const dotsContainer = document.getElementById("galleryDots");
+
+    if (!track || !dotsContainer) {
+        return;
+    }
+
+    try {
+        const response = await fetch("/api/photos");
+        const data = await response.json();
+
+        galleryPhotos = (data.photos || []);
+
+        if (galleryPhotos.length === 0) {
+            track.innerHTML = `<div class="gallery-empty">Add images to the photo_database folder to see them here.</div>`;
+            return;
+        }
+
+        renderGallerySlides(galleryPhotos);
+        renderGalleryDots(galleryPhotos.length);
+
+        // Single persistent listener handles the circular wrap-around,
+        // no matter how many photos exist or how fast slides advance.
+        track.addEventListener("transitionend", handleGalleryTransitionEnd);
+
+        startGalleryAutoplay();
+
+    } catch (error) {
+        track.innerHTML = `<div class="gallery-empty">Could not load destination photos.</div>`;
+    }
+}
+
+function renderGallerySlides(photos) {
+    const track = document.getElementById("galleryTrack");
+
+    // The list behaves like a circular loop: after the real photos,
+    // we append one clone of photo #1. Once we slide onto that clone,
+    // we instantly (and invisibly) rewind to the real photo #1, so the
+    // carousel always keeps moving right and never "dead ends."
+    const slidesHtml = photos
+        .map((url, i) => `
+            <div class="gallery-slide">
+                <img src="${url}" alt="Destination photo ${i + 1}" loading="lazy">
+            </div>
+        `)
+        .join("");
+
+    const cloneFirstHtml = photos.length > 1
+        ? `<div class="gallery-slide"><img src="${photos[0]}" alt="Destination photo 1"></div>`
+        : "";
+
+    track.innerHTML = slidesHtml + cloneFirstHtml;
+
+    galleryIndex = 0;
+    track.style.transform = `translateX(0%)`;
+}
+
+function renderGalleryDots(count) {
+    const dotsContainer = document.getElementById("galleryDots");
+
+    dotsContainer.innerHTML = Array.from({ length: count })
+        .map((_, i) => `<button class="gallery-dot${i === 0 ? " active" : ""}" data-index="${i}"></button>`)
+        .join("");
+
+    dotsContainer.querySelectorAll(".gallery-dot").forEach((dot) => {
+        dot.addEventListener("click", () => {
+            const targetIndex = parseInt(dot.dataset.index, 10);
+            goToGallerySlide(targetIndex);
+            restartGalleryAutoplay();
+        });
+    });
+}
+
+function updateGalleryDots() {
+    const dotsContainer = document.getElementById("galleryDots");
+    if (!dotsContainer) return;
+
+    const realIndex = galleryIndex % galleryPhotos.length;
+
+    dotsContainer.querySelectorAll(".gallery-dot").forEach((dot, i) => {
+        dot.classList.toggle("active", i === realIndex);
+    });
+}
+
+function goToGallerySlide(index) {
+    const track = document.getElementById("galleryTrack");
+    if (!track) return;
+
+    track.classList.remove("no-transition");
+    galleryIndex = index;
+    track.style.transform = `translateX(-${galleryIndex * 100}%)`;
+    updateGalleryDots();
+}
+
+function advanceGallerySlide() {
+    const track = document.getElementById("galleryTrack");
+    if (!track || galleryPhotos.length === 0) return;
+
+    galleryIndex += 1;
+    track.style.transform = `translateX(-${galleryIndex * 100}%)`;
+    updateGalleryDots();
+}
+
+function handleGalleryTransitionEnd() {
+    const track = document.getElementById("galleryTrack");
+    if (!track) return;
+
+    // We only rewind once we've landed on the cloned slide
+    // (one position past the real last photo).
+    if (galleryIndex !== galleryPhotos.length) {
+        return;
+    }
+
+    track.classList.add("no-transition");
+    galleryIndex = 0;
+    track.style.transform = `translateX(0%)`;
+
+    // Force a reflow so the browser applies the instant jump
+    // before we re-enable the smooth transition.
+    void track.offsetWidth;
+
+    track.classList.remove("no-transition");
+}
+
+function startGalleryAutoplay() {
+    if (galleryPhotos.length <= 1) return;
+
+    galleryTimer = setInterval(advanceGallerySlide, GALLERY_INTERVAL_MS);
+}
+
+function restartGalleryAutoplay() {
+    if (galleryTimer) {
+        clearInterval(galleryTimer);
+    }
+    startGalleryAutoplay();
+}
+
+document.addEventListener("DOMContentLoaded", initGallery);
+
 function setPrompt(text) {
     document.getElementById("userInput").value = text;
 }
